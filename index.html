@@ -1,0 +1,60 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>台股走勢預估</title>
+<style>
+:root{--bg:#f7f7f5;--fg:#1d1d1b;--mu:#6b6b66;--card:#fff;--bd:#e2e2dc;--ac:#2b6cb0;--up:#d62f2f;--dn:#1a8f4c;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151514;--fg:#ececea;--mu:#9a9a94;--card:#1f1f1d;--bd:#33332f;--ac:#6cb0ff;--up:#ff5a5a;--dn:#3ecf7e;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#151514;--fg:#ececea;--mu:#9a9a94;--card:#1f1f1d;--bd:#33332f;--ac:#6cb0ff;--up:#ff5a5a;--dn:#3ecf7e;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"PingFang TC","Noto Sans TC",sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px}h1{font-size:20px;margin:4px 0}p.s{color:var(--mu);margin:0 0 12px;font-size:13px}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px}.tabs button{flex:none;border:1px solid var(--bd);background:var(--card);color:var(--fg);border-radius:20px;padding:6px 12px;font:inherit;font-size:13px}
+.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:10px 0}
+textarea{width:100%;height:90px;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:8px;font:12px monospace}
+.r{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}select,.go{font:inherit;font-size:14px;border-radius:8px;border:1px solid var(--bd);padding:6px 10px;background:var(--card);color:var(--fg)}.go{background:var(--ac);color:#fff;border-color:var(--ac)}
+canvas{width:100%;height:240px;display:block}.g{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.g div{background:var(--bg);border-radius:8px;padding:8px}.g b{display:block;font-size:17px}.g span{font-size:12px;color:var(--mu)}
+.up{color:var(--up)}.dn{color:var(--dn)}.w{font-size:12px;color:var(--mu)}details{font-size:13px}
+</style></head><body><main>
+<h1>台股走勢預估</h1><p class="s" id="upd"></p><p class="s">0050・0056・00878・00919・5904｜機率區間預測，不是保證</p>
+<div class="tabs" id="tabs"></div>
+<div class="c"><b id="nm"></b>
+<details><summary>怎麼放資料？</summary><p class="w">到 Yahoo 奇摩股市或 Yahoo Finance（代號如 0050.TW）下載歷史價格 CSV，整份貼進來即可（需含日期與收盤價，建議至少 1 年）。資料只存在你的瀏覽器。</p></details>
+<textarea id="ta" placeholder="Date,Open,High,Low,Close,Adj Close,Volume&#10;2026-06-05,105.00,105.35,102.80,104.15,..."></textarea>
+<div class="r"><select id="hz"><option value="20">預估 20 個交易日</option><option value="60" selected>預估 60 個交易日</option><option value="120">預估 120 個交易日</option></select><button class="go" id="go">分析</button></div></div>
+<div id="out"></div>
+<p class="w">方法：以近 250 日報酬做 2000 次蒙地卡羅（自助抽樣）模擬，漲跌幅趨勢打 5 折以避免過度樂觀；另以歷史資料回測區間命中率。高股息 ETF 除息日股價會下跌，請留意。股價無法被準確預測，本頁僅供參考，不構成投資建議。</p>
+</main><script>
+const T=[["0050","元大台灣50"],["0056","元大高股息"],["00878","國泰永續高股息"],["00919","群益台灣精選高息"],["5904","寶雅"]];
+let cur=0,S={},D0={};try{S=JSON.parse(localStorage.getItem("tw")||"{}")}catch(e){}
+const $=i=>document.getElementById(i),avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+function tabs(){$("tabs").innerHTML=T.map((t,i)=>`<button class="${i==cur?"on":""}" data-i="${i}">${t[0]} ${t[1]}</button>`).join("");$("nm").textContent=T[cur][0]+" "+T[cur][1];$("ta").value=D0[T[cur][0]]||S[T[cur][0]]||"";$("out").innerHTML=""}
+$("tabs").onclick=e=>{const b=e.target.closest("button");if(b){cur=+b.dataset.i;tabs();if($("ta").value)run()}};
+function parse(t){const L=t.trim().split(/\r?\n/).filter(Boolean);if(!L.length)return[];const h=L[0].split(/[,\t]/).map(x=>x.trim().toLowerCase());let s=0,ci=1;
+if(isNaN(parseFloat(h[1]))){s=1;let i=h.indexOf("close");if(i<0)i=h.indexOf("收盤價");ci=i>=0?i:1}
+const o=[];for(let i=s;i<L.length;i++){const c=L[i].split(/[,\t]/),p=parseFloat((c[ci]||"").replace(/,/g,""));if(p>0)o.push({d:c[0].trim(),p})}
+return o.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0)}
+function rsi(P){const n=14;if(P.length<=n)return null;let g=0,l=0;for(let i=P.length-n;i<P.length;i++){const d=P[i]-P[i-1];d>0?g+=d:l-=d}return l==0?100:100-100/(1+g/l)}
+function ma(P,n){return P.length>=n?avg(P.slice(-n)):null}
+function sim(P,H){const r=[];for(let i=1;i<P.length;i++)r.push(Math.log(P[i]/P[i-1]));const w=r.slice(-250),m=avg(w),d=w.map(x=>x-m),mu=m*.5,N=2000,x=new Array(N).fill(P[P.length-1]),bands=[];
+for(let t=0;t<H;t++){for(let k=0;k<N;k++)x[k]*=Math.exp(mu+d[Math.random()*d.length|0]);const s=[...x].sort((a,b)=>a-b);bands.push([s[N*.1|0],s[N*.25|0],s[N*.5|0],s[N*.75|0],s[N*.9|0]])}
+return{bands,vol:Math.sqrt(avg(d.map(v=>v*v)))*Math.sqrt(250),sd:Math.sqrt(avg(d.map(v=>v*v)))}}
+function back(P,H){let a=0,b=0,c=0,e=0;for(let t=120;t+H<P.length;t+=3){const r=[];for(let i=t-119;i<=t;i++)r.push(Math.log(P[i]/P[i-1]));const sg=Math.sqrt(avg(r.map(v=>v*v))),z=1.2816*sg*Math.sqrt(H),y=P[t+H];a++;if(y>=P[t]*Math.exp(-z)&&y<=P[t]*Math.exp(z))b++;if(t>=60){c++;if((P[t]>avg(P.slice(t-59,t+1)))==(y>P[t]))e++}}
+return{n:a,hit:a?b/a:null,dir:c?e/c:null}}
+function draw(P,bands){const cv=$("cv"),dp=devicePixelRatio||1,W=cv.clientWidth,Hh=cv.clientHeight;cv.width=W*dp;cv.height=Hh*dp;const x=cv.getContext("2d");x.scale(dp,dp);
+const cs=getComputedStyle(document.documentElement),ac=cs.getPropertyValue("--ac").trim(),mu=cs.getPropertyValue("--mu").trim();
+const hist=P.slice(-120),H=bands.length,tot=hist.length+H,all=hist.concat(bands.flatMap(b=>[b[0],b[4]])),lo=Math.min(...all)*.98,hi=Math.max(...all)*1.02,X=i=>8+(W-16)*i/(tot-1),Y=v=>Hh-18-(Hh-30)*(v-lo)/(hi-lo);
+x.fillStyle=mu;x.font="11px system-ui";x.fillText(hi.toFixed(1),4,12);x.fillText(lo.toFixed(1),4,Hh-4);
+x.strokeStyle=ac;x.lineWidth=1.8;x.beginPath();hist.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)));x.stroke();
+const o=hist.length-1,band=(a,b,al)=>{x.globalAlpha=al;x.fillStyle=ac;x.beginPath();x.moveTo(X(o),Y(hist[o]));bands.forEach((q,i)=>x.lineTo(X(o+1+i),Y(q[a])));for(let i=H-1;i>=0;i--)x.lineTo(X(o+1+i),Y(bands[i][b]));x.closePath();x.fill();x.globalAlpha=1};
+band(0,4,.15);band(1,3,.25);x.setLineDash([5,4]);x.beginPath();x.moveTo(X(o),Y(hist[o]));bands.forEach((q,i)=>x.lineTo(X(o+1+i),Y(q[2])));x.stroke();x.setLineDash([])}
+function run(){const k=T[cur][0],txt=$("ta").value;S[k]=txt;try{localStorage.setItem("tw",JSON.stringify(S))}catch(e){}
+const D=parse(txt),H=+$("hz").value;if(D.length<60){$("out").innerHTML='<div class="c">資料不足：至少需要 60 筆（建議 250 筆以上）收盤價。</div>';return}
+const P=D.map(v=>v.p),L=P[P.length-1],{bands,vol}=sim(P,H),f=bands[H-1],m20=ma(P,20),m60=ma(P,60),R=rsi(P),bt=back(P,H),ch=q=>{const v=(q/L-1)*100;return`<span class="${v>=0?"up":"dn"}">${v>=0?"+":""}${v.toFixed(1)}%</span>`};
+let sc=0;if(m20&&L>m20)sc++;else sc--;if(m60&&L>m60)sc++;else sc--;if(R>70)sc--;else if(R<30)sc++;
+const sig=sc>=2?"偏多":sc<=-2?"偏空":"中性";
+$("out").innerHTML=`<div class="c"><canvas id="cv"></canvas><p class="w">${D[0].d} ~ ${D[D.length-1].d}（${D.length} 筆）｜虛線為中位數，深／淺色帶為 50%／80% 區間</p></div>
+<div class="c"><div class="g"><div><span>最新收盤</span><b>${L.toFixed(2)}</b></div><div><span>${H} 日後中位數</span><b>${f[2].toFixed(2)} ${ch(f[2])}</b></div>
+<div><span>80% 區間</span><b>${f[0].toFixed(1)} ~ ${f[4].toFixed(1)}</b></div><div><span>50% 區間</span><b>${f[1].toFixed(1)} ~ ${f[3].toFixed(1)}</b></div>
+<div><span>年化波動率</span><b>${(vol*100).toFixed(1)}%</b></div><div><span>技術面訊號</span><b>${sig}</b></div>
+<div><span>MA20／MA60</span><b>${m20?m20.toFixed(1):"-"}／${m60?m60.toFixed(1):"-"}</b></div><div><span>RSI(14)</span><b>${R?R.toFixed(0):"-"}</b></div></div></div>
+<div class="c"><b>回測（這檔自己的歷史）</b><p class="w">${bt.n?`以同樣方法在過去 ${bt.n} 個時間點預測 ${H} 日後：80% 區間實際命中 <b>${(bt.hit*100).toFixed(0)}%</b>（理想約 80%）；「股價站上 MA60 就看漲」方向猜對 <b>${(bt.dir*100).toFixed(0)}%</b>（50% 等於擲硬幣）。`:"資料太短，無法回測。請貼更長的歷史資料。"}</p></div>`;draw(P,bands)}
+$("go").onclick=run;tabs();fetch("data.json?"+Date.now()).then(r=>r.json()).then(j=>{D0=j;tabs();run()}).catch(()=>{});
+</script></body></html>
